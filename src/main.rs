@@ -1,11 +1,13 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 use crate::request::HttpRequest;
 use crate::response::HttpResponse;
 use crate::router::Router;
+use crate::utils::serve_static_file;
 
 mod server;
 mod middleware;
@@ -37,10 +39,20 @@ fn hello_handler(_req: HttpRequest) -> HttpResponse {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Await the result of TcpListener::bind
     let listener = TcpListener::bind("127.0.0.1:8081").await?;
+
     // Initialize the router and register routes
     let mut router = Router::new();
     router.add_route("/", root_handler);
     router.add_route("/hello", hello_handler);
+
+    // Register static route with an async handler
+    router.add_static_route("/static", Arc::new(|path: &str| {
+        let path_owned = path.to_owned();
+        Box::pin(async move {
+            serve_static_file(&path_owned).await
+        }) as Pin<Box<dyn Future<Output=HttpResponse> + Send>>
+    }));
+
 
     let router = Arc::new(router);
 
